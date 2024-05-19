@@ -28,11 +28,21 @@ func readCsvFile(filePath string) [][]string {
 	return records
 }
 
-func reviewScoreCalculator(review string, responseCh chan requestBody) {
+func reviewScoreCalculator(reviews [][]string) <-chan requestBody {
 	// Replace with your actual review score computation function or
 	// an API call.
-	req := &requestBody{Review: review, Score: 7.5}
-	responseCh <- *req
+	ch := make(chan requestBody)
+	go func() {
+		defer close(ch)
+		for idx, line := range reviews {
+			if idx == 0 {
+				continue
+			}
+			req := &requestBody{Review: line[1], Score: 7.5}
+			ch <- *req
+		}
+	}()
+	return ch
 }
 
 func chatCompletion(processedReview string, reviewScore float32) string {
@@ -62,23 +72,18 @@ func chatCompletion(processedReview string, reviewScore float32) string {
 	//}
 	//return string(bytes)
 	//fmt.Printf("I have the review %s with a score %.2f\n", processedReview, reviewScore)
-	return "Based on the current review that I received, the product sucks! idk man I'm just an LLM."
+	sampleResponse := fmt.Sprintf(
+		"For the review %s with score %.2f I think you're better off staying away from this product\n",
+		processedReview,
+		reviewScore,
+	)
+	return sampleResponse
 }
 
 func main() {
-	reviewScoreCh := make(chan requestBody)
 	csvs := readCsvFile("./test.csv")
-	for idx, line := range csvs {
-		if idx == 0 {
-			continue
-		}
-		fmt.Println(idx)
-		go reviewScoreCalculator(line[1], reviewScoreCh)
-	}
-
-	select {
-	case msg := <-reviewScoreCh:
-		llmResponse := chatCompletion(msg.Review, msg.Score)
-		fmt.Println(llmResponse)
+	reviewScoreCh := reviewScoreCalculator(csvs)
+	for msg := range reviewScoreCh {
+		fmt.Println(chatCompletion(msg.Review, msg.Score))
 	}
 }
